@@ -7,7 +7,6 @@ admin.use('*', async (c, next) => {
     await next();
 });
 
-// הדלקה/כיבוי של נעילת נושא
 admin.post('/toggle-lock/:id', async (c) => {
     const topicId = c.req.param('id');
     const db = c.env.DB;
@@ -15,7 +14,6 @@ admin.post('/toggle-lock/:id', async (c) => {
     return c.json({ message: 'מצב הנעילה שונה' });
 });
 
-// הדלקה/כיבוי של הצמדת נושא (Pin)
 admin.post('/toggle-pin/:id', async (c) => {
     const topicId = c.req.param('id');
     const db = c.env.DB;
