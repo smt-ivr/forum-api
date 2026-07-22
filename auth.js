@@ -2,69 +2,85 @@ import { Hono } from 'hono';
 
 const auth = new Hono();
 
-// נתיב לאימות משתמש מול גוגל והכנסה למסד נתונים
-auth.post('/google', async (c) => {
+// יצירת קוד רנדומלי בן 6 ספרות
+const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// שלב 1: בקשת התחברות/הרשמה ושליחת קוד
+auth.post('/request-code', async (c) => {
     const body = await c.req.json();
-    const { token } = body;
+    const { email, name } = body;
 
-    if (!token) {
-        return c.json({ error: 'Google token is required' }, 400);
+    if (!email) {
+        return c.json({ error: 'Email is required' }, 400);
     }
 
+    const db = c.env.DB;
+    const code = generateCode();
+
+    // בדיקה אם המשתמש קיים
+    let user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+
+    if (!user) {
+        // הרשמה חדשה
+        const id = crypto.randomUUID();
+        const userName = name || 'משתמש חדש';
+        await db.prepare('INSERT INTO users (id, email, name, verification_code) VALUES (?, ?, ?, ?)')
+                .bind(id, email, userName, code)
+                .run();
+    } else {
+        // עדכון קוד למשתמש קיים
+        await db.prepare('UPDATE users SET verification_code = ? WHERE email = ?')
+                .bind(code, email)
+                .run();
+    }
+
+    // שליחת המייל באמצעות Resend
     try {
-        // אימות הטוקן מול השרתים של גוגל
-        const googleResponse = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${token}`);
-        const userData = await googleResponse.json();
-
-        if (userData.error) {
-            return c.json({ error: 'Invalid Google token' }, 401);
-        }
-
-        const db = c.env.DB;
-        
-        // בדיקה אם המשתמש כבר קיים במסד הנתונים שלנו
-        let user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(userData.email).first();
-        
-        if (!user) {
-            // יצירת משתמש חדש אם לא קיים
-            const id = crypto.randomUUID();
-            await db.prepare('INSERT INTO users (id, email, name) VALUES (?, ?, ?)')
-                    .bind(id, userData.email, userData.name)
-                    .run();
-            user = { id, email: userData.email, name: userData.name };
-        }
-
-        return c.json({ message: 'Login successful', user });
-    } catch (error) {
-        return c.json({ error: 'Authentication failed', details: error.message }, 500);
-    }
-});
-
-// נתיב לשליחת מיילים
-auth.post('/send-email', async (c) => {
-    const body = await c.req.json();
-    const { to, subject, content } = body;
-
-    if (!to || !subject || !content) {
-        return c.json({ error: 'Missing email parameters (to, subject, content)' }, 400);
-    }
-
-    try {
-        const emailRequest = await fetch('https://api.your-email-provider.com/send', {
+        const emailReq = await fetch('https://api.resend.com/emails', {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${c.env.EMAIL_API_KEY}`
+            headers: {
+                'Authorization': `Bearer ${c.env.RESEND_API_KEY}`,
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ to, subject, text: content })
+            body: JSON.stringify({
+                from: 'Forum <onboarding@resend.dev>', // בהמשך תוכל לאמת דומיין משלך ב-Resend
+                to: email,
+                subject: 'קוד האימות שלך לפורום SMTI',
+                html: `<div dir="rtl"><h2>שלום!</h2><p>קוד האימות שלך לכניסה לפורום הוא: <strong>${code}</strong></p><p>הקוד חד פעמי.</p></div>`
+            })
         });
 
-        const emailResponse = await emailRequest.json();
+        if (!emailReq.ok) {
+            throw new Error('Failed to send email via Resend');
+        }
 
-        return c.json({ message: 'Email sent successfully', data: emailResponse });
+        return c.json({ message: 'Verification code sent to email' });
     } catch (error) {
         return c.json({ error: 'Failed to send email', details: error.message }, 500);
     }
+});
+
+// שלב 2: אימות הקוד וכניסה
+auth.post('/verify-code', async (c) => {
+    const body = await c.req.json();
+    const { email, code } = body;
+
+    if (!email || !code) {
+        return c.json({ error: 'Email and code are required' }, 400);
+    }
+
+    const db = c.env.DB;
+    const user = await db.prepare('SELECT * FROM users WHERE email = ? AND verification_code = ?').bind(email, code).first();
+
+    if (!user) {
+        return c.json({ error: 'Invalid verification code' }, 401);
+    }
+
+    // איפוס הקוד וסימון כמאומת
+    await db.prepare('UPDATE users SET verification_code = NULL, is_verified = 1 WHERE email = ?').bind(email).run();
+
+    // כדי לאבטח בצורה פשוטה אנחנו מחזירים את המשתמש
+    return c.json({ message: 'Login successful', user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
 export default auth;
