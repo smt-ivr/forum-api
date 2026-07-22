@@ -43,9 +43,7 @@ auth.post('/request-code', async (c) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                // שים לב! כדי לשלוח לכל כתובת שתרצה, תצטרך לאמת את הדומיין smti.uk בלוח הבקרה של Resend.
-                // לאחר האימות, תוכל לשנות את הכתובת כאן למשהו כמו: 'Forum <noreply@smti.uk>'
-                from: 'Forum <onboarding@resend.dev>', 
+                from: 'Forum SMTI <forum@smti.uk>', 
                 to: email,
                 subject: 'קוד האימות שלך לפורום SMTI',
                 html: `<div dir="rtl"><h2>שלום!</h2><p>קוד האימות שלך לכניסה לפורום הוא: <strong>${code}</strong></p><p>הקוד חד פעמי.</p></div>`
