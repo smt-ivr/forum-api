@@ -6,4 +6,4 @@ compatibility_date = "2026-05-24"
 [[d1_databases]]
 binding = "DB"
 database_name = "forum" # שנה לשם מסד הנתונים שיצרת
-database_id = "" # יש להעתיק מדאשבורד קלאודפלייר
+database_id = "18e18e63-c0da-409a-aabe-05a4c85abee9" # יש להעתיק מדאשבורד קלאודפלייר
