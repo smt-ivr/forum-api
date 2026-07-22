@@ -5,7 +5,6 @@ const topics = new Hono();
 // 1. שליפת כל הנושאים (לדף הבית של הפורום)
 topics.get('/', async (c) => {
     const db = c.env.DB;
-    // שולפים את הנושאים ומצרפים את שם המשתמש שכתב אותם
     const { results } = await db.prepare(`
         SELECT topics.id, topics.title, topics.content, topics.created_at, users.name as author_name 
         FROM topics 
