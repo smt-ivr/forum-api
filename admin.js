@@ -21,4 +21,31 @@ admin.post('/toggle-pin/:id', async (c) => {
     return c.json({ message: 'מצב ההצמדה שונה' });
 });
 
+// שחזור נושא מחוק (מחזיר למצב רגיל)
+admin.post('/restore-topic/:id', async (c) => {
+    const topicId = c.req.param('id');
+    const db = c.env.DB;
+    await db.prepare('UPDATE topics SET is_deleted = 0 WHERE id = ?').bind(topicId).run();
+    return c.json({ message: 'הנושא שוחזר בהצלחה' });
+});
+
+// מחיקת נושא לצמיתות! (מוחק הכל - נושא, תגובות, והצבעות)
+admin.delete('/hard-delete-topic/:id', async (c) => {
+    const topicId = c.req.param('id');
+    const db = c.env.DB;
+    await db.prepare('DELETE FROM topic_votes WHERE topic_id = ?').bind(topicId).run();
+    await db.prepare('DELETE FROM comment_votes WHERE comment_id IN (SELECT id FROM comments WHERE topic_id = ?)').bind(topicId).run();
+    await db.prepare('DELETE FROM comments WHERE topic_id = ?').bind(topicId).run();
+    await db.prepare('DELETE FROM topics WHERE id = ?').bind(topicId).run();
+    return c.json({ message: 'הנושא נמחק לצמיתות' });
+});
+
+// שחזור תגובה מחוקה
+admin.post('/restore-comment/:id', async (c) => {
+    const commentId = c.req.param('id');
+    const db = c.env.DB;
+    await db.prepare('UPDATE comments SET is_deleted = 0 WHERE id = ?').bind(commentId).run();
+    return c.json({ message: 'התגובה שוחזרה' });
+});
+
 export default admin;
