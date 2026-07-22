@@ -1,18 +1,19 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import authRoutes from './routes/auth.js';
-import topicsRoutes from './routes/topics.js';
+import authRoutes from './auth.js';
+import topicsRoutes from './topics.js';
 
-const app = new Hono();
+// הגדרת נתיב הבסיס כך שיתאים בדיוק לניתוב שיצרת בקלאודפלייר
+const app = new Hono().basePath('/forum/api');
 
 // נאפשר גישה מכל דומיין כדי שתוכל לחבר את צד הלקוח בקלות
 app.use('/*', cors());
 
-// נתיב בדיקה שהשרת עובד
+// נתיב בדיקה שהשרת עובד - עכשיו הוא יהיה זמין בכתובת https://smti.uk/forum/api/
 app.get('/', (c) => c.json({ status: 'ok', message: 'Welcome to SMTI Forum API' }));
 
-// חיבור הקבצים המפוצלים לנתיבים הראשיים
-app.route('/api/auth', authRoutes);
-app.route('/api/topics', topicsRoutes);
+// חיבור הקבצים המפוצלים לנתיבים
+app.route('/auth', authRoutes);
+app.route('/topics', topicsRoutes);
 
 export default app;
