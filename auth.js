@@ -43,15 +43,24 @@ auth.post('/request-code', async (c) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                from: 'Forum <onboarding@resend.dev>', // בהמשך תוכל לאמת דומיין משלך ב-Resend
+                // שים לב! כדי לשלוח לכל כתובת שתרצה, תצטרך לאמת את הדומיין smti.uk בלוח הבקרה של Resend.
+                // לאחר האימות, תוכל לשנות את הכתובת כאן למשהו כמו: 'Forum <noreply@smti.uk>'
+                from: 'Forum <onboarding@resend.dev>', 
                 to: email,
                 subject: 'קוד האימות שלך לפורום SMTI',
                 html: `<div dir="rtl"><h2>שלום!</h2><p>קוד האימות שלך לכניסה לפורום הוא: <strong>${code}</strong></p><p>הקוד חד פעמי.</p></div>`
             })
         });
 
+        // שולפים את התשובה המדויקת של ריסנד
+        const resendResponse = await emailReq.json();
+
+        // אם ריסנד החזיר שגיאה (למשל 403), נחזיר אותה ישירות לצד הלקוח כדי לראות מה הבעיה
         if (!emailReq.ok) {
-            throw new Error('Failed to send email via Resend');
+            return c.json({ 
+                error: 'Resend API Error', 
+                details: resendResponse 
+            }, emailReq.status);
         }
 
         return c.json({ message: 'Verification code sent to email' });
@@ -79,7 +88,7 @@ auth.post('/verify-code', async (c) => {
     // איפוס הקוד וסימון כמאומת
     await db.prepare('UPDATE users SET verification_code = NULL, is_verified = 1 WHERE email = ?').bind(email).run();
 
-    // כדי לאבטח בצורה פשוטה אנחנו מחזירים את המשתמש
+    // מחזירים את נתוני המשתמש
     return c.json({ message: 'Login successful', user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
