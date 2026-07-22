@@ -1,93 +1,57 @@
 import { Hono } from 'hono';
+import { sign } from 'hono/jwt';
+import { getIsraelTime } from './time.js';
+import { hashPassword } from './hash.js';
+import { sendStyledEmail } from './email.js';
 
 const auth = new Hono();
+const JWT_SECRET = 'your-super-secret-jwt-key'; 
 
-// יצירת קוד רנדומלי בן 6 ספרות
-const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
-
-// שלב 1: בקשת התחברות/הרשמה ושליחת קוד
-auth.post('/request-code', async (c) => {
-    const body = await c.req.json();
-    const { email, name } = body;
-
-    if (!email) {
-        return c.json({ error: 'Email is required' }, 400);
-    }
+auth.post('/register', async (c) => {
+    const { email, name, password } = await c.req.json();
+    if (!email || !name || !password) return c.json({ error: 'חסרים פרטים' }, 400);
 
     const db = c.env.DB;
-    const code = generateCode();
 
-    // בדיקה אם המשתמש קיים
-    let user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+    const isBlacklisted = await db.prepare('SELECT email FROM email_blacklist WHERE email = ?').bind(email).first();
+    if (isBlacklisted) return c.json({ error: 'כתובת האימייל חסומה מגישה למערכת.' }, 403);
 
-    if (!user) {
-        // הרשמה חדשה
-        const id = crypto.randomUUID();
-        const userName = name || 'משתמש חדש';
-        await db.prepare('INSERT INTO users (id, email, name, verification_code) VALUES (?, ?, ?, ?)')
-                .bind(id, email, userName, code)
-                .run();
-    } else {
-        // עדכון קוד למשתמש קיים
-        await db.prepare('UPDATE users SET verification_code = ? WHERE email = ?')
-                .bind(code, email)
-                .run();
-    }
+    const existingUser = await db.prepare('SELECT email FROM users WHERE email = ?').bind(email).first();
+    if (existingUser) return c.json({ error: 'המשתמש כבר קיים' }, 400);
 
-    // שליחת המייל באמצעות Resend
-    try {
-        const emailReq = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${c.env.RESEND_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                from: 'Forum SMTI <forum@smti.uk>', 
-                to: email,
-                subject: 'קוד האימות שלך לפורום SMTI',
-                html: `<div dir="rtl"><h2>שלום!</h2><p>קוד האימות שלך לכניסה לפורום הוא: <strong>${code}</strong></p><p>הקוד חד פעמי.</p></div>`
-            })
-        });
+    const id = crypto.randomUUID();
+    const hashedPassword = await hashPassword(password);
+    const now = getIsraelTime();
 
-        // שולפים את התשובה המדויקת של ריסנד
-        const resendResponse = await emailReq.json();
+    await db.prepare('INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+            .bind(id, email, name, hashedPassword, now).run();
 
-        // אם ריסנד החזיר שגיאה (למשל 403), נחזיר אותה ישירות לצד הלקוח כדי לראות מה הבעיה
-        if (!emailReq.ok) {
-            return c.json({ 
-                error: 'Resend API Error', 
-                details: resendResponse 
-            }, emailReq.status);
-        }
+    await sendStyledEmail(c.env.RESEND_API_KEY, email, 'ברוכים הבאים לפורום SMTI!', `<h2>שלום ${name},</h2><p>אנו שמחים שהצטרפת אלינו!</p>`);
 
-        return c.json({ message: 'Verification code sent to email' });
-    } catch (error) {
-        return c.json({ error: 'Failed to send email', details: error.message }, 500);
-    }
+    return c.json({ message: 'ההרשמה בוצעה בהצלחה' }, 201);
 });
 
-// שלב 2: אימות הקוד וכניסה
-auth.post('/verify-code', async (c) => {
-    const body = await c.req.json();
-    const { email, code } = body;
-
-    if (!email || !code) {
-        return c.json({ error: 'Email and code are required' }, 400);
-    }
-
+auth.post('/login', async (c) => {
+    const { email, password } = await c.req.json();
     const db = c.env.DB;
-    const user = await db.prepare('SELECT * FROM users WHERE email = ? AND verification_code = ?').bind(email, code).first();
 
-    if (!user) {
-        return c.json({ error: 'Invalid verification code' }, 401);
-    }
+    const hashedPassword = await hashPassword(password);
+    const user = await db.prepare('SELECT id, name, role, is_banned, group_id FROM users WHERE email = ? AND password_hash = ?')
+                       .bind(email, hashedPassword).first();
 
-    // איפוס הקוד וסימון כמאומת
-    await db.prepare('UPDATE users SET verification_code = NULL, is_verified = 1 WHERE email = ?').bind(email).run();
+    if (!user) return c.json({ error: 'אימייל או סיסמא שגויים' }, 401);
+    if (user.is_banned === 1) return c.json({ error: 'המשתמש שלך נחסם מהמערכת' }, 403);
 
-    // מחזירים את נתוני המשתמש
-    return c.json({ message: 'Login successful', user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    const payload = {
+        id: user.id,
+        role: user.role,
+        group_id: user.group_id,
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 
+    };
+    
+    const token = await sign(payload, JWT_SECRET);
+
+    return c.json({ message: 'התחברת בהצלחה', token, user: { name: user.name, role: user.role } });
 });
 
 export default auth;
