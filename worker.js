@@ -9,7 +9,16 @@ const app = new Hono().basePath('/forum/api');
 // נאפשר גישה מכל דומיין כדי שתוכל לחבר את צד הלקוח בקלות
 app.use('/*', cors());
 
-// נתיב בדיקה שהשרת עובד - עכשיו הוא יהיה זמין בכתובת https://smti.uk/forum/api/
+// תפיסת שגיאות גלובלית - במקום 500 ריק, נחזיר את סיבת הקריסה האמיתית
+app.onError((err, c) => {
+  console.error('API Error:', err);
+  return c.json({ 
+    error: 'Internal Server Error', 
+    message: err.message 
+  }, 500);
+});
+
+// נתיב בדיקה שהשרת עובד - זמין בכתובת https://smti.uk/forum/api/
 app.get('/', (c) => c.json({ status: 'ok', message: 'Welcome to SMTI Forum API' }));
 
 // חיבור הקבצים המפוצלים לנתיבים
