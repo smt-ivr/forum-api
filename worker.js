@@ -1,52 +1,52 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { jwt } from 'hono/jwt';
 
-// ייבוא שטוח - כל הקבצים באותה תיקייה
 import authRoutes from './auth.js';
 import topicsRoutes from './topics.js';
 import adminRoutes from './admin.js';
 
 const app = new Hono().basePath('/forum/api');
-const JWT_SECRET = 'your-super-secret-jwt-key'; // ודא שזהה בכל הקבצים
 
-// מאפשר ללקוח (הדפדפן) לדבר עם השרת
 app.use('/*', cors());
 
-// תפיסת שגיאות גלובלית
 app.onError((err, c) => {
   console.error('API Error:', err);
   return c.json({ error: 'שגיאת שרת פנימית', message: err.message }, 500);
 });
 
-// בדיקת תקינות בסיסית
-app.get('/', (c) => c.json({ status: 'ok', message: 'SMTI Forum API - Advanced' }));
+// פונקציית מידלוור חכמה לאימות טוקנים ממסד הנתונים
+const dbAuthMiddleware = async (c, next) => {
+    const authHeader = c.req.header('Authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        const db = c.env.DB;
+        // מחפשים את המשתמש שיש לו את הטוקן הזה
+        const user = await db.prepare('SELECT * FROM users WHERE token = ?').bind(token).first();
+        if (user) {
+            c.set('user', user); // שומרים את המשתמש להמשך הבקשה
+        }
+    }
+    await next();
+};
 
-// 1. ראוטים של התחברות והרשמה (פתוחים לכולם)
+app.get('/', (c) => c.json({ status: 'ok', message: 'SMTI Forum API - DB Token Version' }));
+
+// החלת המידלוור על כל ראוט שדורש זיהוי
+app.use('/auth/me', dbAuthMiddleware);
+app.use('/topics/*', dbAuthMiddleware);
+app.use('/admin/*', dbAuthMiddleware);
+
 app.route('/auth', authRoutes);
 
-// 2. מידלוור מתוחכם לנושאים (GET פתוח לכולם/מחוברים, POST/DELETE מחייב טוקן)
+// בקריאה (GET) של נושאים נאפשר גישה גם למי שלא מחובר, אבל ליצירה/מחיקה נחייב זיהוי
 app.use('/topics/*', async (c, next) => {
-    if (c.req.method === 'GET') {
-        try {
-            const authHeader = c.req.header('Authorization');
-            if (authHeader) {
-                const middleware = jwt({ secret: JWT_SECRET });
-                await middleware(c, next);
-                return;
-            }
-        } catch (e) { /* מתעלם מטוקן פגום בקריאה בלבד */ }
-        await next();
-    } else {
-        // דורש טוקן ליצירה/מחיקה
-        const middleware = jwt({ secret: JWT_SECRET });
-        await middleware(c, next);
+    if (c.req.method !== 'GET' && !c.get('user')) {
+        return c.json({ error: 'לא מורשה' }, 401);
     }
+    await next();
 });
 app.route('/topics', topicsRoutes);
 
-// 3. ראוטים של ניהול (מחייב טוקן תקין, הבדיקה אם הוא admin נעשית בתוך admin.js)
-app.use('/admin/*', jwt({ secret: JWT_SECRET }));
 app.route('/admin', adminRoutes);
 
 export default app;
