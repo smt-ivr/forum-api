@@ -3,9 +3,10 @@ import { getIsraelTime } from './time.js';
 
 const admin = new Hono();
 
+// מוודאים שיש משתמש והוא מנהל
 admin.use('*', async (c, next) => {
-    const payload = c.get('jwtPayload');
-    if (!payload || payload.role !== 'admin') {
+    const user = c.get('user');
+    if (!user || user.role !== 'admin') {
         return c.json({ error: 'גישה נדחתה. דרושות הרשאות הנהלה.' }, 403);
     }
     await next();
@@ -41,7 +42,7 @@ admin.delete('/hard-delete/topic/:id', async (c) => {
     const db = c.env.DB;
     await db.prepare('DELETE FROM comments WHERE topic_id = ?').bind(topicId).run();
     await db.prepare('DELETE FROM topics WHERE id = ?').bind(topicId).run();
-    return c.json({ message: 'הנושא ותגובותיו נמחקו לצמיתות מהמסד' });
+    return c.json({ message: 'הנושא נמחק לצמיתות' });
 });
 
 export default admin;
