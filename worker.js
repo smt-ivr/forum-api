@@ -2,27 +2,22 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import authRoutes from './auth.js';
 import topicsRoutes from './topics.js';
+import categoriesRoutes from './categories.js';
 
-// הגדרת נתיב הבסיס כך שיתאים בדיוק לניתוב שיצרת בקלאודפלייר
 const app = new Hono().basePath('/forum/api');
 
-// נאפשר גישה מכל דומיין כדי שתוכל לחבר את צד הלקוח בקלות
 app.use('/*', cors());
 
-// תפיסת שגיאות גלובלית - במקום 500 ריק, נחזיר את סיבת הקריסה האמיתית
 app.onError((err, c) => {
   console.error('API Error:', err);
-  return c.json({ 
-    error: 'Internal Server Error', 
-    message: err.message 
-  }, 500);
+  return c.json({ error: 'Internal Server Error', message: err.message }, 500);
 });
 
-// נתיב בדיקה שהשרת עובד - זמין בכתובת https://smti.uk/forum/api/
-app.get('/', (c) => c.json({ status: 'ok', message: 'Welcome to SMTI Forum API' }));
+app.get('/', (c) => c.json({ status: 'ok', message: 'SMTI Forum API v2' }));
 
-// חיבור הקבצים המפוצלים לנתיבים
+// חיבור כל הנתיבים המפוצלים
 app.route('/auth', authRoutes);
 app.route('/topics', topicsRoutes);
+app.route('/categories', categoriesRoutes);
 
 export default app;
