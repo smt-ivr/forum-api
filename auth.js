@@ -50,13 +50,11 @@ auth.post('/send-email', async (c) => {
     }
 
     try {
-        // מכיוון שיש לך כבר שירות מיילים, כאן אתה מבצע את הקריאה ל-API שלו.
-        // דוגמה קלאסית לשליחת בקשת HTTP לשירות כמו Resend או שרת ה-SMTP הפרטי שלך:
         const emailRequest = await fetch('https://api.your-email-provider.com/send', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${c.env.EMAIL_API_KEY}` // תוכל להגדיר מפתח כסוד ב-Cloudflare
+                'Authorization': `Bearer ${c.env.EMAIL_API_KEY}`
             },
             body: JSON.stringify({ to, subject, text: content })
         });
