@@ -2,13 +2,14 @@ import { Hono } from 'hono';
 
 const topics = new Hono();
 
-// שליפת כל הנושאים (כולל כמות לייקים)
+// שליפת כל הנושאים (כולל סטטיסטיקות כמו ב-phpBB)
 topics.get('/', async (c) => {
     const db = c.env.DB;
     const { results } = await db.prepare(`
         SELECT topics.id, topics.title, topics.content, topics.created_at, topics.category_id,
                users.name as author_name, users.id as author_id, categories.name as category_name,
-               COALESCE(SUM(topic_votes.vote), 0) as total_votes
+               COALESCE(SUM(topic_votes.vote), 0) as total_votes,
+               (SELECT COUNT(*) FROM comments WHERE comments.topic_id = topics.id) as replies_count
         FROM topics 
         JOIN users ON topics.user_id = users.id 
         JOIN categories ON topics.category_id = categories.id
@@ -39,7 +40,7 @@ topics.post('/', async (c) => {
 // מחיקת נושא (רק בעלים או מנהל)
 topics.delete('/:id', async (c) => {
     const topicId = c.req.param('id');
-    const userId = c.req.header('x-user-id'); // המזהה נשלח בהאדר
+    const userId = c.req.header('x-user-id');
     const db = c.env.DB;
 
     const user = await db.prepare('SELECT role FROM users WHERE id = ?').bind(userId).first();
@@ -64,7 +65,7 @@ topics.get('/:id', async (c) => {
     const db = c.env.DB;
     
     const topic = await db.prepare(`
-        SELECT topics.*, users.name as author_name, categories.name as category_name,
+        SELECT topics.*, users.name as author_name, users.role as author_role, categories.name as category_name,
                COALESCE(SUM(topic_votes.vote), 0) as total_votes
         FROM topics 
         JOIN users ON topics.user_id = users.id 
@@ -77,7 +78,8 @@ topics.get('/:id', async (c) => {
     if (!topic) return c.json({ error: 'Topic not found' }, 404);
 
     const { results: comments } = await db.prepare(`
-        SELECT comments.id, comments.content, comments.created_at, comments.user_id, users.name as author_name 
+        SELECT comments.id, comments.content, comments.created_at, comments.user_id, 
+               users.name as author_name, users.role as author_role 
         FROM comments 
         JOIN users ON comments.user_id = users.id 
         WHERE topic_id = ? 
@@ -91,25 +93,21 @@ topics.get('/:id', async (c) => {
 topics.post('/:id/vote', async (c) => {
     const topicId = c.req.param('id');
     const body = await c.req.json();
-    const { user_id, vote } = body; // vote צריך להיות 1 או -1
+    const { user_id, vote } = body; 
 
     if (!user_id || (vote !== 1 && vote !== -1)) return c.json({ error: 'Invalid vote data' }, 400);
 
     const db = c.env.DB;
     
-    // בודקים אם יש כבר הצבעה
     const existing = await db.prepare('SELECT vote FROM topic_votes WHERE topic_id = ? AND user_id = ?').bind(topicId, user_id).first();
 
     if (existing) {
         if (existing.vote === vote) {
-            // ביטול הצבעה אם לוחצים על אותו כפתור שוב
             await db.prepare('DELETE FROM topic_votes WHERE topic_id = ? AND user_id = ?').bind(topicId, user_id).run();
         } else {
-            // שינוי הצבעה
             await db.prepare('UPDATE topic_votes SET vote = ? WHERE topic_id = ? AND user_id = ?').bind(vote, topicId, user_id).run();
         }
     } else {
-        // הצבעה חדשה
         await db.prepare('INSERT INTO topic_votes (topic_id, user_id, vote) VALUES (?, ?, ?)').bind(topicId, user_id, vote).run();
     }
 
