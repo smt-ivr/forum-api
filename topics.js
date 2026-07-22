@@ -3,7 +3,6 @@ import { getIsraelTime } from './time.js';
 
 const topics = new Hono();
 
-// 1. רשימת כל הנושאים (כולל לייקים, כמות תגובות, ונעוצים למעלה)
 topics.get('/', async (c) => {
     const user = c.get('user');
     const userRole = user ? user.role : 'guest';
@@ -19,21 +18,16 @@ topics.get('/', async (c) => {
         JOIN categories c ON t.category_id = c.id
         LEFT JOIN topic_votes tv ON t.id = tv.topic_id
     `;
-    
     if (userRole !== 'admin') query += ` WHERE t.is_deleted = 0 `;
-    
-    // קיבוץ ומיון: קודם נעוצים, ואז לפי תאריך יצירה
     query += ` GROUP BY t.id ORDER BY t.is_pinned DESC, t.created_at DESC`;
     
     const { results } = await db.prepare(query).all();
     return c.json(results);
 });
 
-// 2. צפייה בנושא ספציפי והתגובות שלו
 topics.get('/:id', async (c) => {
     const topicId = c.req.param('id');
     const db = c.env.DB;
-    
     const topic = await db.prepare(`
         SELECT t.*, u.name as author_name, COALESCE(SUM(tv.vote), 0) as total_votes
         FROM topics t
@@ -55,7 +49,6 @@ topics.get('/:id', async (c) => {
     return c.json({ topic, comments });
 });
 
-// 3. פרסום נושא חדש
 topics.post('/', async (c) => {
     const user = c.get('user');
     if (!user) return c.json({ error: 'לא מורשה' }, 401);
@@ -71,7 +64,6 @@ topics.post('/', async (c) => {
     return c.json({ message: 'הנושא נוצר בהצלחה' }, 201);
 });
 
-// 4. פרסום תגובה לנושא
 topics.post('/:id/comments', async (c) => {
     const topicId = c.req.param('id');
     const user = c.get('user');
@@ -93,13 +85,12 @@ topics.post('/:id/comments', async (c) => {
     return c.json({ message: 'תגובה נוספה' }, 201);
 });
 
-// 5. הצבעה (לייק/דיסלייק)
 topics.post('/:id/vote', async (c) => {
     const topicId = c.req.param('id');
     const user = c.get('user');
     if (!user) return c.json({ error: 'לא מורשה' }, 401);
 
-    const { vote } = await c.req.json(); // 1 או -1
+    const { vote } = await c.req.json();
     const db = c.env.DB;
     
     const existing = await db.prepare('SELECT vote FROM topic_votes WHERE topic_id = ? AND user_id = ?').bind(topicId, user.id).first();
@@ -116,16 +107,13 @@ topics.post('/:id/vote', async (c) => {
     return c.json({ message: 'ההצבעה נרשמה' });
 });
 
-// 6. מחיקת נושא (רכה)
 topics.delete('/:id', async (c) => {
     const topicId = c.req.param('id');
     const user = c.get('user');
     const db = c.env.DB;
-
     const topic = await db.prepare('SELECT user_id FROM topics WHERE id = ?').bind(topicId).first();
     if (!topic) return c.json({ error: 'לא נמצא' }, 404);
     if (topic.user_id !== user.id && user.role !== 'admin') return c.json({ error: 'אין הרשאה' }, 403);
-
     await db.prepare('UPDATE topics SET is_deleted = 1 WHERE id = ?').bind(topicId).run();
     return c.json({ message: 'הנושא נמחק' });
 });
