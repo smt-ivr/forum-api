@@ -1,9 +1,0 @@
-name = "forum-backend"
-main = "worker.js"
-compatibility_date = "2026-05-24"
-
-# חיבור למסד הנתונים
-[[d1_databases]]
-binding = "DB"
-database_name = "forum" 
-database_id = ""
